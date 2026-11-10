@@ -19,7 +19,7 @@ do projeto.
   reduzir erro de digitação em link lido em voz alta
 - D-04: unicidade do código garantida por índice único no banco, além da
   checagem no serviço, porque a checagem sozinha tem corrida
-- D-05: chave de gerenciamento da DC-03 armazenada como hash, nunca em texto puro
+- D-05: chave de gerenciamento da D-03 armazenada como hash, nunca em texto puro
 
 ## Modelo de dados
 Link

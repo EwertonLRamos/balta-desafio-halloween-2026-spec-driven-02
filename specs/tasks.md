@@ -10,5 +10,9 @@
 | T-06 | Aceitar código próprio com unicidade | RF-03, RN-01, D-04 | T-05 | Código duplicado retorna 409 |
 | T-07 | Redirecionar por código | RF-04 | T-05 | Teste de integração retorna 302 |
 | T-08 | Incrementar contador de forma atômica | RF-05, RN-04, D-02 | T-07 | Teste concorrente não perde contagem |
-| T-09 | Endpoint de estatísticas com chave | RF-07, DC-03 | T-05 | Chave errada retorna 401 |
+| T-09 | Endpoint de estatísticas com chave | RF-07, D-03 | T-05 | Chave errada retorna 401 |
+| T-11 | Validar expiração por UTC e fim da data | RF-06 | T-05 | Data de expiração em UTC é interpretada corretamente e o link segue válido até o fim da data |
+| T-12 | Bloquear redirecionamento e contagem de links expirados | RN-03 | T-08, T-11 | Link expirado responde 410 e não incrementa o contador |
+| T-13 | Validar códigos permitidos de A-Z e 1-9 | RN-05 | T-03 | Teste cobre letras minúsculas, zero, espaços e caracteres especiais |
+| T-14 | Regerar código automático ao colidir com um existente | RN-06 | T-03, T-05 | Código automático duplicado gera novo código e a criação termina com sucesso |
 | T-10 | Cache em memória dos links mais acessados | | T-07 | Latência de redirect cai |
