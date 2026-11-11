@@ -10,5 +10,9 @@ public interface ILinkRepository
         string code,
         CancellationToken cancellationToken);
 
+    Task<LinkStatisticsData?> GetStatisticsDataByCodeAsync(
+        string code,
+        CancellationToken cancellationToken);
+
     Task<LinkRepositoryAddResult> AddAsync(Link link, CancellationToken cancellationToken);
 }

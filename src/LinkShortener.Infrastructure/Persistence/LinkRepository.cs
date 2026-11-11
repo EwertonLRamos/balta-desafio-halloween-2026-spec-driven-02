@@ -34,6 +34,15 @@ public sealed class LinkRepository(LinkShortenerDbContext dbContext) : ILinkRepo
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    public Task<LinkStatisticsData?> GetStatisticsDataByCodeAsync(
+        string code,
+        CancellationToken cancellationToken) =>
+        dbContext.Links
+            .AsNoTracking()
+            .Where(link => link.Code == code)
+            .Select(link => new LinkStatisticsData(link.ManagementKeyHash, link.AccessCount))
+            .SingleOrDefaultAsync(cancellationToken);
+
     public async Task<LinkRepositoryAddResult> AddAsync(
         Link link,
         CancellationToken cancellationToken)

@@ -15,6 +15,32 @@ public sealed class LinkService(
         CancellationToken cancellationToken) =>
         linkRepository.GetTargetUrlAndIncrementAccessCountAsync(code, cancellationToken);
 
+    public async Task<LinkStatisticsResult> GetStatisticsAsync(
+        string code,
+        string? managementKey,
+        CancellationToken cancellationToken)
+    {
+        var statistics = await linkRepository.GetStatisticsDataByCodeAsync(code, cancellationToken);
+        if (statistics is null)
+        {
+            return LinkStatisticsResult.NotFound();
+        }
+
+        if (string.IsNullOrEmpty(managementKey))
+        {
+            return LinkStatisticsResult.Unauthorized();
+        }
+
+        var providedHash = SHA256.HashData(Encoding.UTF8.GetBytes(managementKey));
+        var storedHash = Convert.FromHexString(statistics.ManagementKeyHash);
+        if (!CryptographicOperations.FixedTimeEquals(providedHash, storedHash))
+        {
+            return LinkStatisticsResult.Unauthorized();
+        }
+
+        return LinkStatisticsResult.Found(statistics.AccessCount);
+    }
+
     public async Task<LinkCreationResult> CreateAsync(
         string? targetUrl,
         string? code,

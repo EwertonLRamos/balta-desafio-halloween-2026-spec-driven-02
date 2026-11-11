@@ -1,4 +1,5 @@
 @baseUrl = http://localhost:5000
+@managementKey = paste-management-key-from-create-response
 
 ### Create a link
 POST {{baseUrl}}/api/links
@@ -19,3 +20,7 @@ Content-Type: application/json
 
 ### Redirect to a link destination
 GET {{baseUrl}}/MY42
+
+### Get link statistics (replace the value with the managementKey returned on creation)
+GET {{baseUrl}}/api/links/MY42/stats
+X-Management-Key: {{managementKey}}

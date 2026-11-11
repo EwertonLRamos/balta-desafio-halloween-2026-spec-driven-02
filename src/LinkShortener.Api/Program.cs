@@ -22,6 +22,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.MapLinkEndpoints();
+app.MapLinkStatisticsEndpoints();
 
 app.Run();
 
