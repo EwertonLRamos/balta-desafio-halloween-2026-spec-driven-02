@@ -35,3 +35,8 @@ Link
 ## Riscos
 - Concorrência na criação de código próprio, mitigada por D-04
 - Crescimento da tabela de links sem política de limpeza, fora de escopo por ora
+
+## Higiene do repositório
+- Adicionar um `.gitignore` na raiz para excluir artefatos locais de build e
+  desenvolvimento, incluindo `bin/`, `obj/` e arquivos de banco SQLite locais,
+  sem ignorar código-fonte ou migrações.

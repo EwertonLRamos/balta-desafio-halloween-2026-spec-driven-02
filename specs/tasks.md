@@ -16,3 +16,4 @@
 | T-13 | Validar códigos permitidos de A-Z e 1-9 | RN-05 | T-03 | Teste cobre letras minúsculas, zero, espaços e caracteres especiais |
 | T-14 | Regerar código automático ao colidir com um existente | RN-06 | T-03, T-05 | Código automático duplicado gera novo código e a criação termina com sucesso |
 | T-10 | Cache em memória dos links mais acessados | | T-07 | Latência de redirect cai |
+| T-15 | Adicionar `.gitignore` na raiz do repositório | Higiene do repositório | T-01 | Artefatos de build e arquivos locais de banco SQLite não aparecem como alterações no Git |
