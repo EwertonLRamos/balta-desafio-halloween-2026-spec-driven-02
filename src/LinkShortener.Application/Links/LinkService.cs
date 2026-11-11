@@ -10,6 +10,9 @@ public sealed class LinkService(
     TargetUrlValidator targetUrlValidator,
     LinkCodeValidator linkCodeValidator) : ILinkService
 {
+    public Task<string?> GetTargetUrlAsync(string code, CancellationToken cancellationToken) =>
+        linkRepository.GetTargetUrlByCodeAsync(code, cancellationToken);
+
     public async Task<LinkCreationResult> CreateAsync(
         string? targetUrl,
         string? code,

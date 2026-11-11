@@ -8,6 +8,24 @@ public static class LinkEndpoints
 {
     public static void MapLinkEndpoints(this WebApplication app)
     {
+        app.MapGet(
+                "/{code}",
+                async Task<Results<RedirectHttpResult, NotFound>> (
+                    string code,
+                    ILinkService linkService,
+                    CancellationToken cancellationToken) =>
+                {
+                    var targetUrl = await linkService.GetTargetUrlAsync(code, cancellationToken);
+                    return targetUrl is null
+                        ? TypedResults.NotFound()
+                        : TypedResults.Redirect(targetUrl);
+                })
+            .WithName("RedirectLink")
+            .WithSummary("Redireciona para o destino do link")
+            .WithDescription("Busca o link pelo código e redireciona para sua URL de destino.")
+            .Produces(StatusCodes.Status302Found)
+            .Produces(StatusCodes.Status404NotFound);
+
         app.MapPost(
                 "/api/links",
                 async Task<Results<

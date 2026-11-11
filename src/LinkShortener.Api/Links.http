@@ -16,3 +16,6 @@ Content-Type: application/json
   "targetUrl": "https://example.com/destination",
   "code": "MY42"
 }
+
+### Redirect to a link destination
+GET {{baseUrl}}/MY42

@@ -96,6 +96,70 @@ public sealed class LinkCreationEndpointTests
     }
 
     [Fact]
+    public async Task Get_by_code_redirects_to_the_link_target()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+            var createResponse = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "REDIR7"));
+            var createdLink = await createResponse.Content.ReadFromJsonAsync<CreateLinkResponse>();
+
+            Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+            Assert.NotNull(createdLink);
+
+            var redirectResponse = await client.GetAsync($"/{createdLink.Code}");
+
+            Assert.Equal(HttpStatusCode.Found, redirectResponse.StatusCode);
+            Assert.Equal(TargetUrl, redirectResponse.Headers.Location?.ToString());
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Get_by_unknown_code_returns_not_found()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+
+            var response = await client.GetAsync("/UNKNOWN");
+
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Post_returns_409_when_a_custom_code_is_already_in_use()
     {
         var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
