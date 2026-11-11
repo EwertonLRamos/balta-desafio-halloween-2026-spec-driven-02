@@ -14,5 +14,6 @@ public interface ILinkService
     Task<LinkCreationResult> CreateAsync(
         string? targetUrl,
         string? code,
+        DateTimeOffset? expiresAtUtc,
         CancellationToken cancellationToken);
 }

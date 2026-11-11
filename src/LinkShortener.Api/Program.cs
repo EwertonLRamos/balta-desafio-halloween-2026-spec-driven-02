@@ -4,8 +4,10 @@ using LinkShortener.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddMemoryCache(options => options.SizeLimit = 10_000);
 builder.Services.AddSingleton<LinkCodeGenerator>();
 builder.Services.AddSingleton<LinkCodeValidator>();
+builder.Services.AddSingleton<LinkExpirationValidator>();
 builder.Services.AddSingleton<TargetUrlValidator>();
 builder.Services.AddScoped<ILinkRepository, LinkRepository>();
 builder.Services.AddScoped<ILinkService, LinkService>();

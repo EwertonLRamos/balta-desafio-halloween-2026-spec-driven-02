@@ -2,11 +2,19 @@ using LinkShortener.Application.Links;
 using LinkShortener.Domain;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace LinkShortener.Infrastructure.Persistence;
 
-public sealed class LinkRepository(LinkShortenerDbContext dbContext) : ILinkRepository
+public sealed class LinkRepository(
+    LinkShortenerDbContext dbContext,
+    IMemoryCache memoryCache) : ILinkRepository
 {
+    private static readonly TimeSpan CacheSlidingExpiration = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan CacheAbsoluteExpiration = TimeSpan.FromHours(24);
+    private const int CacheEntrySize = 1;
+    private const string TargetUrlCacheKeyPrefix = "link-target:";
+
     public Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken) =>
         dbContext.Links.AnyAsync(link => link.Code == code, cancellationToken);
 
@@ -14,25 +22,48 @@ public sealed class LinkRepository(LinkShortenerDbContext dbContext) : ILinkRepo
         string code,
         CancellationToken cancellationToken)
     {
-        var updatedLinks = await dbContext.Links
+        var cacheKey = $"{TargetUrlCacheKeyPrefix}{code}";
+        if (memoryCache.TryGetValue(cacheKey, out string? cachedTargetUrl))
+        {
+            var updatedLinks = await IncrementAccessCountAsync(code, cancellationToken);
+            return updatedLinks == 0 ? null : cachedTargetUrl;
+        }
+
+        var updatedLinksOnMiss = await IncrementAccessCountAsync(code, cancellationToken);
+
+        if (updatedLinksOnMiss == 0)
+        {
+            return null;
+        }
+
+        var targetUrl = await dbContext.Links
+            .AsNoTracking()
+            .Where(link => link.Code == code)
+            .Select(link => link.TargetUrl)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (targetUrl is not null)
+        {
+            memoryCache.Set(
+                cacheKey,
+                targetUrl,
+                new MemoryCacheEntryOptions()
+                    .SetSize(CacheEntrySize)
+                    .SetSlidingExpiration(CacheSlidingExpiration)
+                    .SetAbsoluteExpiration(CacheAbsoluteExpiration));
+        }
+
+        return targetUrl;
+    }
+
+    private Task<int> IncrementAccessCountAsync(string code, CancellationToken cancellationToken) =>
+        dbContext.Links
             .Where(link => link.Code == code)
             .ExecuteUpdateAsync(
                 setters => setters.SetProperty(
                     link => link.AccessCount,
                     link => link.AccessCount + 1),
                 cancellationToken);
-
-        if (updatedLinks == 0)
-        {
-            return null;
-        }
-
-        return await dbContext.Links
-            .AsNoTracking()
-            .Where(link => link.Code == code)
-            .Select(link => link.TargetUrl)
-            .SingleOrDefaultAsync(cancellationToken);
-    }
 
     public Task<LinkStatisticsData?> GetStatisticsDataByCodeAsync(
         string code,

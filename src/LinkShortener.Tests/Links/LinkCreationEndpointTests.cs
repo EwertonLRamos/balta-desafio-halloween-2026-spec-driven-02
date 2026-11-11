@@ -96,6 +96,84 @@ public sealed class LinkCreationEndpointTests
     }
 
     [Fact]
+    public async Task Post_normalizes_expiration_to_the_end_of_its_utc_date()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+        var utcDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(10));
+        var requestedExpiration = new DateTimeOffset(
+            utcDate.ToDateTime(new TimeOnly(23, 30), DateTimeKind.Unspecified),
+            TimeSpan.FromHours(-2));
+        var expectedUtcDate = utcDate.AddDays(1);
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient();
+
+            var response = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "EXPIRE1", requestedExpiration));
+
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+            var body = await response.Content.ReadFromJsonAsync<CreateLinkResponse>();
+            Assert.NotNull(body);
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LinkShortenerDbContext>();
+            var persistedLink = await dbContext.Links
+                .AsNoTracking()
+                .SingleAsync(link => link.Code == body.Code);
+
+            Assert.Equal(
+                new DateTimeOffset(expectedUtcDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc)),
+                persistedLink.ExpiresAtUtc);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Post_returns_400_when_expiration_is_before_the_current_utc_day()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+        var yesterdayUtc = DateTime.UtcNow.Date.AddDays(-1);
+        var expiration = new DateTimeOffset(yesterdayUtc, TimeSpan.Zero);
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient();
+
+            var response = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "PAST01", expiration));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            var validationProblem = await response.Content.ReadFromJsonAsync<ValidationProblemResponse>();
+            Assert.NotNull(validationProblem);
+            Assert.Contains("expiresAtUtc", validationProblem.Errors.Keys);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Get_by_code_redirects_to_the_link_target()
     {
         var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
@@ -293,4 +371,6 @@ public sealed class LinkCreationEndpointTests
     }
 
     private sealed record ProblemDetailsResponse(int? Status, string? Detail);
+
+    private sealed record ValidationProblemResponse(Dictionary<string, string[]> Errors);
 }

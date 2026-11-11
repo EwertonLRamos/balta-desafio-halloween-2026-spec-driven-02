@@ -8,7 +8,8 @@ public sealed class LinkService(
     ILinkRepository linkRepository,
     LinkCodeGenerator linkCodeGenerator,
     TargetUrlValidator targetUrlValidator,
-    LinkCodeValidator linkCodeValidator) : ILinkService
+    LinkCodeValidator linkCodeValidator,
+    LinkExpirationValidator linkExpirationValidator) : ILinkService
 {
     public Task<string?> GetTargetUrlAndIncrementAccessCountAsync(
         string code,
@@ -44,6 +45,7 @@ public sealed class LinkService(
     public async Task<LinkCreationResult> CreateAsync(
         string? targetUrl,
         string? code,
+        DateTimeOffset? expiresAtUtc,
         CancellationToken cancellationToken)
     {
         var validation = targetUrlValidator.Validate(targetUrl);
@@ -56,6 +58,16 @@ public sealed class LinkService(
 
         var validTargetUrl = targetUrl
             ?? throw new InvalidOperationException("A validação válida deve incluir uma URL de destino.");
+
+        var expirationValidation = linkExpirationValidator.Validate(expiresAtUtc);
+        if (!expirationValidation.IsValid)
+        {
+            return LinkCreationResult.Invalid(
+                expirationValidation.ErrorMessage
+                    ?? throw new InvalidOperationException(
+                        "A validação inválida da expiração deve incluir uma mensagem."),
+                "expiresAtUtc");
+        }
 
         if (code is not null)
         {
@@ -85,6 +97,7 @@ public sealed class LinkService(
                 Code = linkCode,
                 TargetUrl = validTargetUrl,
                 CreatedAtUtc = DateTimeOffset.UtcNow,
+                ExpiresAtUtc = expirationValidation.ExpiresAtUtc,
                 AccessCount = 0,
                 ManagementKeyHash = managementKeyHash
             },

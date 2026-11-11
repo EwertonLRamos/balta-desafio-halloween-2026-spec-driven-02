@@ -42,6 +42,7 @@ public static class LinkEndpoints
                     var result = await linkService.CreateAsync(
                         request.TargetUrl,
                         request.Code,
+                        request.ExpiresAtUtc,
                         cancellationToken);
                     if (!result.IsSuccessful)
                     {

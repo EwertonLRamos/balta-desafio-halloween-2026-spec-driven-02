@@ -18,6 +18,15 @@ Content-Type: application/json
   "code": "MY42"
 }
 
+### Create a link that expires at the end of the given UTC date
+POST {{baseUrl}}/api/links
+Content-Type: application/json
+
+{
+  "targetUrl": "https://example.com/temporary",
+  "expiresAtUtc": "2099-12-31T12:00:00-03:00"
+}
+
 ### Redirect to a link destination
 GET {{baseUrl}}/MY42
 
