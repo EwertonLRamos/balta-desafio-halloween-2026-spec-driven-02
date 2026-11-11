@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using LinkShortener.Api.Links;
+using LinkShortener.Application.Links;
 using LinkShortener.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -85,6 +86,49 @@ public sealed class LinkCreationEndpointTests
             Assert.NotNull(body);
             Assert.Equal("MY42", body.Code);
             Assert.Equal($"http://localhost/{body.Code}", body.ShortUrl);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Post_retries_an_automatically_generated_code_when_it_collides()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+        var codeGenerator = new SequenceLinkCodeGenerator("COLLIDE", "NEWCODE");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath, codeGenerator);
+            using var client = factory.CreateClient();
+
+            var customResponse = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "COLLIDE"));
+            var automaticResponse = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl));
+            var automaticLink = await automaticResponse.Content.ReadFromJsonAsync<CreateLinkResponse>();
+
+            Assert.Equal(HttpStatusCode.Created, customResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Created, automaticResponse.StatusCode);
+            Assert.NotNull(automaticLink);
+            Assert.Equal("NEWCODE", automaticLink.Code);
+            Assert.Equal(2, codeGenerator.GenerationCount);
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LinkShortenerDbContext>();
+            Assert.Equal(2, await dbContext.Links.CountAsync());
+            Assert.Contains(
+                await dbContext.Links.Select(link => link.Code).ToListAsync(),
+                code => code == "NEWCODE");
         }
         finally
         {
@@ -448,7 +492,9 @@ public sealed class LinkCreationEndpointTests
         }
     }
 
-    private sealed class LinkShortenerApiFactory(string databasePath) : WebApplicationFactory<Program>
+    private sealed class LinkShortenerApiFactory(
+        string databasePath,
+        ILinkCodeGenerator? codeGenerator = null) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -460,7 +506,21 @@ public sealed class LinkCreationEndpointTests
                     ["ConnectionStrings:DefaultConnection"] = $"Data Source={databasePath};Pooling=False"
                 });
             });
+            if (codeGenerator is not null)
+            {
+                builder.ConfigureServices(services =>
+                    services.AddSingleton<ILinkCodeGenerator>(codeGenerator));
+            }
         }
+    }
+
+    private sealed class SequenceLinkCodeGenerator(params string[] codes) : ILinkCodeGenerator
+    {
+        private int _generationCount;
+
+        public int GenerationCount => _generationCount;
+
+        public string Generate() => codes[_generationCount++];
     }
 
     private static async Task SetExpirationAsync(

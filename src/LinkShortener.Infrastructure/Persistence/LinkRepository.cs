@@ -117,6 +117,7 @@ public sealed class LinkRepository(
         }
         catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
         {
+            dbContext.Entry(link).State = EntityState.Detached;
             return LinkRepositoryAddResult.DuplicateCode;
         }
     }

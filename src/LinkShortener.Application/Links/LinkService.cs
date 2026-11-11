@@ -6,11 +6,13 @@ namespace LinkShortener.Application.Links;
 
 public sealed class LinkService(
     ILinkRepository linkRepository,
-    LinkCodeGenerator linkCodeGenerator,
+    ILinkCodeGenerator linkCodeGenerator,
     TargetUrlValidator targetUrlValidator,
     LinkCodeValidator linkCodeValidator,
     LinkExpirationValidator linkExpirationValidator) : ILinkService
 {
+    private const int MaximumAutomaticCodeGenerationAttempts = 5;
+
     public Task<LinkRedirectResult> GetTargetUrlAndIncrementAccessCountAsync(
         string code,
         CancellationToken cancellationToken) =>
@@ -89,29 +91,36 @@ public sealed class LinkService(
             .Replace('/', '_');
         var managementKeyHash = Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(managementKey)));
-        var linkCode = code ?? linkCodeGenerator.Generate();
-
-        var addResult = await linkRepository.AddAsync(
-            new Link
-            {
-                Code = linkCode,
-                TargetUrl = validTargetUrl,
-                CreatedAtUtc = DateTimeOffset.UtcNow,
-                ExpiresAtUtc = expirationValidation.ExpiresAtUtc,
-                AccessCount = 0,
-                ManagementKeyHash = managementKeyHash
-            },
-            cancellationToken);
-
-        return addResult switch
+        var maximumAttempts = code is null ? MaximumAutomaticCodeGenerationAttempts : 1;
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
-            LinkRepositoryAddResult.Added =>
-                LinkCreationResult.Success(linkCode, validTargetUrl, managementKey),
-            LinkRepositoryAddResult.DuplicateCode =>
-                LinkCreationResult.Conflict(code is null
-                    ? "Não foi possível gerar um código disponível."
-                    : "O código informado já está em uso."),
-            _ => throw new InvalidOperationException("Resultado de persistência não reconhecido.")
-        };
+            var linkCode = code ?? linkCodeGenerator.Generate();
+            var addResult = await linkRepository.AddAsync(
+                new Link
+                {
+                    Code = linkCode,
+                    TargetUrl = validTargetUrl,
+                    CreatedAtUtc = DateTimeOffset.UtcNow,
+                    ExpiresAtUtc = expirationValidation.ExpiresAtUtc,
+                    AccessCount = 0,
+                    ManagementKeyHash = managementKeyHash
+                },
+                cancellationToken);
+
+            switch (addResult)
+            {
+                case LinkRepositoryAddResult.Added:
+                    return LinkCreationResult.Success(linkCode, validTargetUrl, managementKey);
+                case LinkRepositoryAddResult.DuplicateCode when code is not null:
+                    return LinkCreationResult.Conflict("O código informado já está em uso.");
+                case LinkRepositoryAddResult.DuplicateCode:
+                    continue;
+                default:
+                    throw new InvalidOperationException("Resultado de persistência não reconhecido.");
+            }
+        }
+
+        return LinkCreationResult.Conflict(
+            "Não foi possível gerar um código disponível após várias tentativas.");
     }
 }
