@@ -20,6 +20,9 @@ do projeto.
 - D-04: unicidade do código garantida por índice único no banco, além da
   checagem no serviço, porque a checagem sozinha tem corrida
 - D-05: chave de gerenciamento da D-03 armazenada como hash, nunca em texto puro
+- D-06: documentação OpenAPI gerada pelo suporte nativo do ASP.NET Core 10,
+  exposta em desenvolvimento em `/openapi/v1.json`, sem adicionar Swashbuckle
+  ou uma interface de terceiros
 
 ## Modelo de dados
 Link

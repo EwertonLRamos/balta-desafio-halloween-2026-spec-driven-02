@@ -18,6 +18,35 @@ public sealed class LinkCreationEndpointTests
     private const string TargetUrl = "https://example.com/destination";
 
     [Fact]
+    public async Task OpenApi_document_includes_the_link_endpoints_in_development()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient();
+
+            var response = await client.GetAsync("/openapi/v1.json");
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var document = await response.Content.ReadAsStringAsync();
+            Assert.Contains("\"/api/links\"", document, StringComparison.Ordinal);
+            Assert.Contains("\"/api/links/{code}/stats\"", document, StringComparison.Ordinal);
+            Assert.Contains("\"/{code}\"", document, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Post_creates_and_persists_a_link_with_201_created()
     {
         var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");

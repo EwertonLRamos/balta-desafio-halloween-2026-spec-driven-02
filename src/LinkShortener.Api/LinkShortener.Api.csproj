@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
     <ProjectReference Include="..\LinkShortener.Application\LinkShortener.Application.csproj" />
     <ProjectReference Include="..\LinkShortener.Infrastructure\LinkShortener.Infrastructure.csproj" />
   </ItemGroup>

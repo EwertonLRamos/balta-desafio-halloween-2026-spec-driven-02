@@ -17,3 +17,4 @@
 | T-14 | Regerar código automático ao colidir com um existente | RN-06 | T-03, T-05 | Código automático duplicado gera novo código e a criação termina com sucesso |
 | T-10 | Cache em memória dos links mais acessados | | T-07 | Latência de redirect cai |
 | T-15 | Adicionar `.gitignore` na raiz do repositório | Higiene do repositório | T-01 | Artefatos de build e arquivos locais de banco SQLite não aparecem como alterações no Git |
+| T-16 | Expor documentação OpenAPI em desenvolvimento | Documentação da API | T-01 | Documento em `/openapi/v1.json` inclui os endpoints da API |

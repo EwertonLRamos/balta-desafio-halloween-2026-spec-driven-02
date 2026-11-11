@@ -4,6 +4,7 @@ using LinkShortener.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache(options => options.SizeLimit = 10_000);
 builder.Services.AddSingleton<ILinkCodeGenerator, LinkCodeGenerator>();
 builder.Services.AddSingleton<LinkCodeValidator>();
@@ -16,6 +17,11 @@ builder.Services.AddDbContext<LinkShortenerDbContext>(options =>
         builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=links.db"));
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
