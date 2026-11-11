@@ -15,7 +15,9 @@ public static class LinkEndpoints
                     ILinkService linkService,
                     CancellationToken cancellationToken) =>
                 {
-                    var targetUrl = await linkService.GetTargetUrlAsync(code, cancellationToken);
+                    var targetUrl = await linkService.GetTargetUrlAndIncrementAccessCountAsync(
+                        code,
+                        cancellationToken);
                     return targetUrl is null
                         ? TypedResults.NotFound()
                         : TypedResults.Redirect(targetUrl);

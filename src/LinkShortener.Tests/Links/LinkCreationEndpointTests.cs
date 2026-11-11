@@ -121,6 +121,60 @@ public sealed class LinkCreationEndpointTests
 
             Assert.Equal(HttpStatusCode.Found, redirectResponse.StatusCode);
             Assert.Equal(TargetUrl, redirectResponse.Headers.Location?.ToString());
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LinkShortenerDbContext>();
+            var persistedLink = await dbContext.Links
+                .AsNoTracking()
+                .SingleAsync(link => link.Code == createdLink.Code);
+
+            Assert.Equal(1, persistedLink.AccessCount);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Concurrent_redirects_increment_the_access_count_without_losing_updates()
+    {
+        const int requestCount = 40;
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+            var createResponse = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "COUNT8"));
+            var createdLink = await createResponse.Content.ReadFromJsonAsync<CreateLinkResponse>();
+
+            Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+            Assert.NotNull(createdLink);
+
+            var redirectResponses = await Task.WhenAll(
+                Enumerable.Range(0, requestCount)
+                    .Select(_ => client.GetAsync($"/{createdLink.Code}")));
+
+            Assert.All(redirectResponses, response => Assert.Equal(HttpStatusCode.Found, response.StatusCode));
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LinkShortenerDbContext>();
+            var persistedLink = await dbContext.Links
+                .AsNoTracking()
+                .SingleAsync(link => link.Code == createdLink.Code);
+
+            Assert.Equal(requestCount, persistedLink.AccessCount);
         }
         finally
         {

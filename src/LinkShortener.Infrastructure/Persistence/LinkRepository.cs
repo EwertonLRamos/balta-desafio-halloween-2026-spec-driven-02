@@ -10,12 +10,29 @@ public sealed class LinkRepository(LinkShortenerDbContext dbContext) : ILinkRepo
     public Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken) =>
         dbContext.Links.AnyAsync(link => link.Code == code, cancellationToken);
 
-    public Task<string?> GetTargetUrlByCodeAsync(string code, CancellationToken cancellationToken) =>
-        dbContext.Links
+    public async Task<string?> GetTargetUrlAndIncrementAccessCountAsync(
+        string code,
+        CancellationToken cancellationToken)
+    {
+        var updatedLinks = await dbContext.Links
+            .Where(link => link.Code == code)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(
+                    link => link.AccessCount,
+                    link => link.AccessCount + 1),
+                cancellationToken);
+
+        if (updatedLinks == 0)
+        {
+            return null;
+        }
+
+        return await dbContext.Links
             .AsNoTracking()
             .Where(link => link.Code == code)
             .Select(link => link.TargetUrl)
             .SingleOrDefaultAsync(cancellationToken);
+    }
 
     public async Task<LinkRepositoryAddResult> AddAsync(
         Link link,
