@@ -7,3 +7,12 @@ Content-Type: application/json
 {
   "targetUrl": "https://example.com/destination"
 }
+
+### Create a link with a custom code
+POST {{baseUrl}}/api/links
+Content-Type: application/json
+
+{
+  "targetUrl": "https://example.com/destination",
+  "code": "MY42"
+}

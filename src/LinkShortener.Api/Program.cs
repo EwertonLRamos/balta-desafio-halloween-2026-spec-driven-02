@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<LinkCodeGenerator>();
+builder.Services.AddSingleton<LinkCodeValidator>();
 builder.Services.AddSingleton<TargetUrlValidator>();
 builder.Services.AddScoped<ILinkRepository, LinkRepository>();
 builder.Services.AddScoped<ILinkService, LinkService>();

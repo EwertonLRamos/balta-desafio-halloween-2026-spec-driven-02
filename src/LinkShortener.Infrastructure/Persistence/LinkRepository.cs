@@ -1,13 +1,36 @@
 using LinkShortener.Application.Links;
 using LinkShortener.Domain;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace LinkShortener.Infrastructure.Persistence;
 
 public sealed class LinkRepository(LinkShortenerDbContext dbContext) : ILinkRepository
 {
-    public async Task AddAsync(Link link, CancellationToken cancellationToken)
+    public Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken) =>
+        dbContext.Links.AnyAsync(link => link.Code == code, cancellationToken);
+
+    public async Task<LinkRepositoryAddResult> AddAsync(
+        Link link,
+        CancellationToken cancellationToken)
     {
         await dbContext.Links.AddAsync(link, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
+
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return LinkRepositoryAddResult.Added;
+        }
+        catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
+        {
+            return LinkRepositoryAddResult.DuplicateCode;
+        }
     }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException exception) =>
+        exception.InnerException is SqliteException
+        {
+            SqliteErrorCode: 19,
+            SqliteExtendedErrorCode: 2067
+        };
 }

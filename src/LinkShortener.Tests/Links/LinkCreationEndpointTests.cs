@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using LinkShortener.Api.Links;
 using LinkShortener.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -13,6 +14,8 @@ namespace LinkShortener.Tests.Links;
 
 public sealed class LinkCreationEndpointTests
 {
+    private const string TargetUrl = "https://example.com/destination";
+
     [Fact]
     public async Task Post_creates_and_persists_a_link_with_201_created()
     {
@@ -27,7 +30,7 @@ public sealed class LinkCreationEndpointTests
 
             var response = await client.PostAsJsonAsync(
                 "/api/links",
-                new CreateLinkRequest("https://example.com/destination"));
+                new CreateLinkRequest(TargetUrl));
 
             Assert.Equal(HttpStatusCode.Created, response.StatusCode);
             Assert.NotNull(response.Headers.Location);
@@ -46,10 +49,106 @@ public sealed class LinkCreationEndpointTests
                 .AsNoTracking()
                 .SingleAsync(link => link.Code == body.Code);
 
-            Assert.Equal("https://example.com/destination", persistedLink.TargetUrl);
+            Assert.Equal(TargetUrl, persistedLink.TargetUrl);
             Assert.Equal(0, persistedLink.AccessCount);
             Assert.Null(persistedLink.ExpiresAtUtc);
             Assert.NotEqual(body.ManagementKey, persistedLink.ManagementKeyHash);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Post_creates_a_link_with_a_custom_code()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient();
+
+            var response = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "MY42"));
+
+            Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+            var body = await response.Content.ReadFromJsonAsync<CreateLinkResponse>();
+            Assert.NotNull(body);
+            Assert.Equal("MY42", body.Code);
+            Assert.Equal($"http://localhost/{body.Code}", body.ShortUrl);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Post_returns_409_when_a_custom_code_is_already_in_use()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient();
+            var request = new CreateLinkRequest(TargetUrl, "MY42");
+
+            var firstResponse = await client.PostAsJsonAsync("/api/links", request);
+            var duplicateResponse = await client.PostAsJsonAsync("/api/links", request);
+
+            Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, duplicateResponse.StatusCode);
+            Assert.Equal("application/problem+json", duplicateResponse.Content.Headers.ContentType?.MediaType);
+
+            var problem = await duplicateResponse.Content.ReadFromJsonAsync<ProblemDetailsResponse>();
+            Assert.NotNull(problem);
+            Assert.Equal(StatusCodes.Status409Conflict, problem.Status);
+            Assert.Equal("O código informado já está em uso.", problem.Detail);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("ABC")]
+    [InlineData("ABCDEFGHIJKLMNOPQRSTU")]
+    public async Task Post_returns_400_when_custom_code_length_is_out_of_range(string code)
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient();
+
+            var response = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, code));
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         }
         finally
         {
@@ -74,4 +173,6 @@ public sealed class LinkCreationEndpointTests
             });
         }
     }
+
+    private sealed record ProblemDetailsResponse(int? Status, string? Detail);
 }

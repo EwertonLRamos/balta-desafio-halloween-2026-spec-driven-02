@@ -1,5 +1,6 @@
 using LinkShortener.Application.Links;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 
 namespace LinkShortener.Api.Links;
 
@@ -9,23 +10,37 @@ public static class LinkEndpoints
     {
         app.MapPost(
                 "/api/links",
-                async Task<Results<Created<CreateLinkResponse>, ValidationProblem>> (
+                async Task<Results<
+                    Created<CreateLinkResponse>,
+                    ValidationProblem,
+                    ProblemHttpResult>> (
                     CreateLinkRequest request,
                     HttpContext httpContext,
                     ILinkService linkService,
                     CancellationToken cancellationToken) =>
                 {
-                    var result = await linkService.CreateAsync(request.TargetUrl, cancellationToken);
+                    var result = await linkService.CreateAsync(
+                        request.TargetUrl,
+                        request.Code,
+                        cancellationToken);
                     if (!result.IsSuccessful)
                     {
+                        var errorMessage = result.ErrorMessage
+                            ?? throw new InvalidOperationException(
+                                "Uma falha de criação deve incluir uma mensagem.");
+
+                        if (result.IsConflict)
+                        {
+                            return TypedResults.Problem(
+                                detail: errorMessage,
+                                instance: httpContext.Request.Path,
+                                statusCode: StatusCodes.Status409Conflict,
+                                title: "Conflito ao criar o link");
+                        }
+
                         return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                         {
-                            ["targetUrl"] =
-                            [
-                                result.ErrorMessage
-                                    ?? throw new InvalidOperationException(
-                                        "Uma falha de criação deve incluir uma mensagem.")
-                            ]
+                            [result.ErrorField ?? "targetUrl"] = [errorMessage]
                         });
                     }
 
@@ -42,8 +57,10 @@ public static class LinkEndpoints
                 })
             .WithName("CreateLink")
             .WithSummary("Cria um link curto")
-            .WithDescription("Valida a URL de destino e cria um link com código gerado automaticamente.")
+            .WithDescription(
+                "Valida a URL de destino e cria um link com código gerado automaticamente ou informado pelo criador.")
             .Produces<CreateLinkResponse>(StatusCodes.Status201Created)
-            .ProducesValidationProblem();
+            .ProducesValidationProblem()
+            .ProducesProblem(StatusCodes.Status409Conflict);
     }
 }
