@@ -10,23 +10,34 @@ public static class LinkEndpoints
     {
         app.MapGet(
                 "/{code}",
-                async Task<Results<RedirectHttpResult, NotFound>> (
+                async Task<Results<RedirectHttpResult, NotFound, ProblemHttpResult>> (
                     string code,
                     ILinkService linkService,
                     CancellationToken cancellationToken) =>
                 {
-                    var targetUrl = await linkService.GetTargetUrlAndIncrementAccessCountAsync(
+                    var redirectResult = await linkService.GetTargetUrlAndIncrementAccessCountAsync(
                         code,
                         cancellationToken);
-                    return targetUrl is null
-                        ? TypedResults.NotFound()
-                        : TypedResults.Redirect(targetUrl);
+                    return redirectResult.Status switch
+                    {
+                        LinkRedirectStatus.Found => TypedResults.Redirect(
+                            redirectResult.TargetUrl
+                                ?? throw new InvalidOperationException(
+                                    "Um link válido deve incluir a URL de destino.")),
+                        LinkRedirectStatus.NotFound => TypedResults.NotFound(),
+                        LinkRedirectStatus.Expired => TypedResults.Problem(
+                            statusCode: StatusCodes.Status410Gone,
+                            title: "Link expirado",
+                            detail: "Este link não está mais disponível."),
+                        _ => throw new InvalidOperationException("Resultado de redirecionamento não reconhecido.")
+                    };
                 })
             .WithName("RedirectLink")
             .WithSummary("Redireciona para o destino do link")
             .WithDescription("Busca o link pelo código e redireciona para sua URL de destino.")
             .Produces(StatusCodes.Status302Found)
-            .Produces(StatusCodes.Status404NotFound);
+            .Produces(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status410Gone);
 
         app.MapPost(
                 "/api/links",

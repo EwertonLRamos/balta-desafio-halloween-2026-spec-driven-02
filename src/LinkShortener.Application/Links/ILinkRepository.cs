@@ -6,7 +6,7 @@ public interface ILinkRepository
 {
     Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken);
 
-    Task<string?> GetTargetUrlAndIncrementAccessCountAsync(
+    Task<LinkRedirectResult> GetTargetUrlAndIncrementAccessCountAsync(
         string code,
         CancellationToken cancellationToken);
 

@@ -11,7 +11,7 @@ public sealed class LinkService(
     LinkCodeValidator linkCodeValidator,
     LinkExpirationValidator linkExpirationValidator) : ILinkService
 {
-    public Task<string?> GetTargetUrlAndIncrementAccessCountAsync(
+    public Task<LinkRedirectResult> GetTargetUrlAndIncrementAccessCountAsync(
         string code,
         CancellationToken cancellationToken) =>
         linkRepository.GetTargetUrlAndIncrementAccessCountAsync(code, cancellationToken);

@@ -2,7 +2,7 @@ namespace LinkShortener.Application.Links;
 
 public interface ILinkService
 {
-    Task<string?> GetTargetUrlAndIncrementAccessCountAsync(
+    Task<LinkRedirectResult> GetTargetUrlAndIncrementAccessCountAsync(
         string code,
         CancellationToken cancellationToken);
 

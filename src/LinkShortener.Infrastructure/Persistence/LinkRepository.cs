@@ -18,22 +18,30 @@ public sealed class LinkRepository(
     public Task<bool> ExistsByCodeAsync(string code, CancellationToken cancellationToken) =>
         dbContext.Links.AnyAsync(link => link.Code == code, cancellationToken);
 
-    public async Task<string?> GetTargetUrlAndIncrementAccessCountAsync(
+    public async Task<LinkRedirectResult> GetTargetUrlAndIncrementAccessCountAsync(
         string code,
         CancellationToken cancellationToken)
     {
         var cacheKey = $"{TargetUrlCacheKeyPrefix}{code}";
         if (memoryCache.TryGetValue(cacheKey, out string? cachedTargetUrl))
         {
-            var updatedLinks = await IncrementAccessCountAsync(code, cancellationToken);
-            return updatedLinks == 0 ? null : cachedTargetUrl;
+            var currentUtc = DateTimeOffset.UtcNow;
+            var updatedLinks = await IncrementAccessCountAsync(code, currentUtc, cancellationToken);
+            return updatedLinks == 0
+                ? await GetUnavailableLinkResultAsync(code, currentUtc, cancellationToken)
+                : LinkRedirectResult.Found(cachedTargetUrl
+                    ?? throw new InvalidOperationException("Um destino em cache não pode ser nulo."));
         }
 
-        var updatedLinksOnMiss = await IncrementAccessCountAsync(code, cancellationToken);
+        var currentUtcOnMiss = DateTimeOffset.UtcNow;
+        var updatedLinksOnMiss = await IncrementAccessCountAsync(
+            code,
+            currentUtcOnMiss,
+            cancellationToken);
 
         if (updatedLinksOnMiss == 0)
         {
-            return null;
+            return await GetUnavailableLinkResultAsync(code, currentUtcOnMiss, cancellationToken);
         }
 
         var targetUrl = await dbContext.Links
@@ -53,17 +61,39 @@ public sealed class LinkRepository(
                     .SetAbsoluteExpiration(CacheAbsoluteExpiration));
         }
 
-        return targetUrl;
+        return targetUrl is null
+            ? LinkRedirectResult.NotFound()
+            : LinkRedirectResult.Found(targetUrl);
     }
 
-    private Task<int> IncrementAccessCountAsync(string code, CancellationToken cancellationToken) =>
-        dbContext.Links
+    private async Task<LinkRedirectResult> GetUnavailableLinkResultAsync(
+        string code,
+        DateTimeOffset currentUtc,
+        CancellationToken cancellationToken)
+    {
+        var link = await dbContext.Links
+            .AsNoTracking()
             .Where(link => link.Code == code)
-            .ExecuteUpdateAsync(
-                setters => setters.SetProperty(
-                    link => link.AccessCount,
-                    link => link.AccessCount + 1),
-                cancellationToken);
+            .Select(link => new { link.ExpiresAtUtc })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return link?.ExpiresAtUtc is { } expiresAtUtc && expiresAtUtc < currentUtc
+            ? LinkRedirectResult.Expired()
+            : LinkRedirectResult.NotFound();
+    }
+
+    private Task<int> IncrementAccessCountAsync(
+        string code,
+        DateTimeOffset currentUtc,
+        CancellationToken cancellationToken) =>
+        dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE "Links"
+            SET "AccessCount" = "AccessCount" + 1
+            WHERE "Code" = {code}
+              AND ("ExpiresAtUtc" IS NULL OR "ExpiresAtUtc" >= {currentUtc})
+            """,
+            cancellationToken);
 
     public Task<LinkStatisticsData?> GetStatisticsDataByCodeAsync(
         string code,

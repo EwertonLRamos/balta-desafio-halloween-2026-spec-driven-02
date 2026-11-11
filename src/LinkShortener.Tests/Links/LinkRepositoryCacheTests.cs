@@ -1,4 +1,5 @@
 using System.Data.Common;
+using LinkShortener.Application.Links;
 using LinkShortener.Domain;
 using LinkShortener.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
@@ -39,15 +40,16 @@ public sealed class LinkRepositoryCacheTests
         var repository = new LinkRepository(dbContext, memoryCache);
         interceptor.Reset();
 
-        var firstTargetUrl = await repository.GetTargetUrlAndIncrementAccessCountAsync(
+        var firstResult = await repository.GetTargetUrlAndIncrementAccessCountAsync(
             "CACHE1",
             CancellationToken.None);
-        var secondTargetUrl = await repository.GetTargetUrlAndIncrementAccessCountAsync(
+        var secondResult = await repository.GetTargetUrlAndIncrementAccessCountAsync(
             "CACHE1",
             CancellationToken.None);
 
-        Assert.Equal("https://example.com/destination", firstTargetUrl);
-        Assert.Equal(firstTargetUrl, secondTargetUrl);
+        Assert.Equal(LinkRedirectStatus.Found, firstResult.Status);
+        Assert.Equal("https://example.com/destination", firstResult.TargetUrl);
+        Assert.Equal(firstResult, secondResult);
         Assert.Equal(1, interceptor.ReaderCommands);
         Assert.Equal(2, interceptor.NonQueryCommands);
 

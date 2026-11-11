@@ -292,6 +292,99 @@ public sealed class LinkCreationEndpointTests
     }
 
     [Fact]
+    public async Task Get_by_expired_code_returns_gone_without_incrementing_access_count()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+            var createResponse = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "EXPIRE1"));
+            var createdLink = await createResponse.Content.ReadFromJsonAsync<CreateLinkResponse>();
+
+            Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+            Assert.NotNull(createdLink);
+
+            await SetExpirationAsync(factory, createdLink.Code, DateTimeOffset.UtcNow.AddSeconds(-1));
+
+            var redirectResponse = await client.GetAsync($"/{createdLink.Code}");
+
+            Assert.Equal(HttpStatusCode.Gone, redirectResponse.StatusCode);
+            Assert.Equal("application/problem+json", redirectResponse.Content.Headers.ContentType?.MediaType);
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LinkShortenerDbContext>();
+            var persistedLink = await dbContext.Links
+                .AsNoTracking()
+                .SingleAsync(link => link.Code == createdLink.Code);
+
+            Assert.Equal(0, persistedLink.AccessCount);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Cached_redirect_returns_gone_without_incrementing_an_expired_link()
+    {
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var databasePath = Path.Combine(testDirectory, "links.db");
+
+        try
+        {
+            using var factory = new LinkShortenerApiFactory(databasePath);
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+            var createResponse = await client.PostAsJsonAsync(
+                "/api/links",
+                new CreateLinkRequest(TargetUrl, "CACHE2"));
+            var createdLink = await createResponse.Content.ReadFromJsonAsync<CreateLinkResponse>();
+
+            Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+            Assert.NotNull(createdLink);
+
+            var firstRedirect = await client.GetAsync($"/{createdLink.Code}");
+            Assert.Equal(HttpStatusCode.Found, firstRedirect.StatusCode);
+            await SetExpirationAsync(factory, createdLink.Code, DateTimeOffset.UtcNow.AddSeconds(-1));
+
+            var expiredRedirect = await client.GetAsync($"/{createdLink.Code}");
+
+            Assert.Equal(HttpStatusCode.Gone, expiredRedirect.StatusCode);
+
+            await using var scope = factory.Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<LinkShortenerDbContext>();
+            var persistedLink = await dbContext.Links
+                .AsNoTracking()
+                .SingleAsync(link => link.Code == createdLink.Code);
+
+            Assert.Equal(1, persistedLink.AccessCount);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory))
+            {
+                Directory.Delete(testDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Post_returns_409_when_a_custom_code_is_already_in_use()
     {
         var testDirectory = Path.Combine(Path.GetTempPath(), $"link-shortener-{Guid.NewGuid():N}");
@@ -368,6 +461,20 @@ public sealed class LinkCreationEndpointTests
                 });
             });
         }
+    }
+
+    private static async Task SetExpirationAsync(
+        LinkShortenerApiFactory factory,
+        string code,
+        DateTimeOffset expiresAtUtc)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<LinkShortenerDbContext>();
+        await dbContext.Links
+            .Where(link => link.Code == code)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(
+                link => link.ExpiresAtUtc,
+                expiresAtUtc));
     }
 
     private sealed record ProblemDetailsResponse(int? Status, string? Detail);
