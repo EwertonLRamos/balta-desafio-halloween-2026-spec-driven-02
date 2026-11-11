@@ -1,0 +1,9 @@
+@baseUrl = http://localhost:5000
+
+### Create a link
+POST {{baseUrl}}/api/links
+Content-Type: application/json
+
+{
+  "targetUrl": "https://example.com/destination"
+}

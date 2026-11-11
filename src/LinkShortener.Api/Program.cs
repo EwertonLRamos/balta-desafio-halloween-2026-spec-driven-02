@@ -1,7 +1,13 @@
+using LinkShortener.Api.Links;
+using LinkShortener.Application.Links;
 using LinkShortener.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSingleton<LinkCodeGenerator>();
+builder.Services.AddSingleton<TargetUrlValidator>();
+builder.Services.AddScoped<ILinkRepository, LinkRepository>();
+builder.Services.AddScoped<ILinkService, LinkService>();
 builder.Services.AddDbContext<LinkShortenerDbContext>(options =>
     options.UseSqlite(
         builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=links.db"));
@@ -14,4 +20,10 @@ await using (var scope = app.Services.CreateAsyncScope())
     await dbContext.Database.MigrateAsync();
 }
 
+app.MapLinkEndpoints();
+
 app.Run();
+
+public partial class Program
+{
+}
